@@ -6,6 +6,8 @@ Identify Rocket League gameserver IP while joining, get its average ping out of 
 .NOTES
 - Keep in mind that the logic of this script does not protect against gameservers with good ping but high packet loss.
 - The icmp response time and the ping displayed in game can vary by ~20ms. You can play with the -PingCutoff parameter to accommodate this if you are still getting too high ping.
+.LINK
+https://github.com/Blwrk/RL-BadGameserverProtection.ps1
 .PARAMETER PingCutoff
 Define the maximum allowed ping in miliseconds, default is 80.
 .PARAMETER TimeOut
