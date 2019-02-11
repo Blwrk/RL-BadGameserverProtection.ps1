@@ -25,10 +25,7 @@ if (!$prp.IsInRole($adm))
 	Write-Host "This script must be run in an elevated PowerShell window. Please launch an elevated session and try again." -ForegroundColor Yellow
 	Break
 }
-$GameSrv = New-Object System.Object
-$GameSrv | Add-Member -type NoteProperty -Name IP -Value ""
-$GameSrv | Add-Member -type NoteProperty -Name Ping -Value 0
-$GameSrv | Add-Member -type NoteProperty -Name PL -Value 0
+$GameSrv = New-Object PsObject -Property @{IP=""; Ping=0; PL=0}
 $Srv = @()
 for ($i=0;$i -lt 3;$i++){
     $Srv += $GameSrv
@@ -44,22 +41,19 @@ while (1) {
         $RLfound = $true
         Get-NetTCPConnection -OwningProcess ((Get-Process RocketLeague).Id) -ea SilentlyContinue | Select RemoteAddress, RemotePort | Where-Object {$_.RemotePort -in 7000..9000 -or $_.RemotePort -in 2000..3300} |
             % {
-                $CurrSrv = New-Object System.Object
-                $CurrSrv | Add-Member -type NoteProperty -Name IP -Value $_.RemoteAddress
-                $CurrSrv | Add-Member -type NoteProperty -Name Ping -Value 0
-                $CurrSrv | Add-Member -type NoteProperty -Name PL -Value 0
+                $CurrSrv = New-Object PsObject -Property @{IP=$_.RemoteAddress; Ping=0; PL=0}
                 ping -4 -n 1 -w $PingCutoff*4 $CurrSrv.IP | Where-Object {($_ -match $IPv4Regex -and $_ -match $PingRegex) -or $_ -match $PLRegex} |
                     % {
-                                                $Srv[2] = $Srv[1]
-                        $Srv[1] = $Srv[0]
+                        $Srv[2] = $Srv[1].PsObject.Copy()
+                        $Srv[1] = $Srv[0].PsObject.Copy()
                         if ($_ -match $PLRegex){
                             $CurrSrv.PL = 1
                         }else{
                             $CurrSrv.Ping = [convert]::ToInt32(((([regex]$PingRegex).Match($_).Value) -replace "..$"), 10)
                         }
-                        $Srv[0] = $CurrSrv
+                        $Srv[0] = $CurrSrv.PsObject.Copy()
                         if (($Srv[0].IP -eq $Srv[1].IP -and $Srv[1].IP -eq $Srv[2].IP) -and ($Srv[0].IP -ne $GameSrv.IP)){
-                            $GameSrv = $Srv[0]
+                            $GameSrv = $Srv[0].PsObject.Copy()
                             Write-Host "Gameserver found:   " $GameSrv.IP -ForegroundColor Yellow
                             $GameSrv.PL += $Srv[1].PL
                             $GameSrv.PL += $Srv[2].PL
