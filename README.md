@@ -12,7 +12,7 @@ Launch an elevated Powershell and execute the script:
 ```
 
 If the gameserver is declared good, this is the expected output:
-```shell
+```
 Gameserver found:    1.2.3.4
 Average Ping:        36ms
 Packets Lost:        0/3
@@ -20,7 +20,7 @@ Have Fun!
 ```
 
 If the gameserver is declared bad, this is the expected output:
-```shell
+```
 Gameserver found:    4.3.2.1
 Average Ping:        96ms
 Packets Lost:        2/3
