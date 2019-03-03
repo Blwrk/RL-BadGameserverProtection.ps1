@@ -39,50 +39,59 @@ $RLfound = $true
 while (1) {
     if (((Get-Process RocketLeague -ErrorAction SilentlyContinue).count) -eq 1){
         $RLfound = $true
-        Get-NetTCPConnection -OwningProcess ((Get-Process RocketLeague).Id) -ea SilentlyContinue | Select RemoteAddress, RemotePort | Where-Object {$_.RemotePort -in 7000..9000 -or $_.RemotePort -in 2000..3300} |
-            % {
+        $ActiveConnections = Get-NetTCPConnection -OwningProcess ((Get-Process RocketLeague).Id) -ea SilentlyContinue | Select RemoteAddress, RemotePort | Where-Object {$_.RemotePort -in 7000..9000 -or $_.RemotePort -in 2000..3300}
+        if ($ActiveConnections) {
+            $ActiveConnections | % {        
                 $CurrSrv = New-Object PsObject -Property @{IP=$_.RemoteAddress; Ping=0; PL=0}
-                ping -4 -n 1 -w $PingCutoff*4 $CurrSrv.IP | Where-Object {($_ -match $IPv4Regex -and $_ -match $PingRegex) -or $_ -match $PLRegex} |
-                    % {
-                        $Srv[2] = $Srv[1].PsObject.Copy()
-                        $Srv[1] = $Srv[0].PsObject.Copy()
-                        if ($_ -match $PLRegex){
-                            $CurrSrv.PL = 1
-                        }else{
-                            $CurrSrv.Ping = [convert]::ToInt32(((([regex]$PingRegex).Match($_).Value) -replace "..$"), 10)
+                ping -4 -n 1 -w $PingCutoff*4 $CurrSrv.IP | Where-Object {($_ -match $IPv4Regex -and $_ -match $PingRegex) -or $_ -match $PLRegex} | % {
+                    $Srv[2] = $Srv[1].PsObject.Copy()
+                    $Srv[1] = $Srv[0].PsObject.Copy()
+                    if ($_ -match $PLRegex){
+                        $CurrSrv.PL = 1
+                    }else{
+                        $CurrSrv.Ping = [convert]::ToInt32(((([regex]$PingRegex).Match($_).Value) -replace "..$"), 10)
+                    }
+                    $Srv[0] = $CurrSrv.PsObject.Copy()
+                    if (($Srv[0].IP -eq $Srv[1].IP -and $Srv[1].IP -eq $Srv[2].IP) -and ($Srv[0].IP -ne $GameSrv.IP)){
+                        $GameSrv = $Srv[0].PsObject.Copy()
+                        Write-Host "Gameserver found:   " $GameSrv.IP -ForegroundColor Yellow
+                        $GameSrv.PL += $Srv[1].PL
+                        $GameSrv.PL += $Srv[2].PL
+                        if ($GameSrv.PL -lt 3){
+                            $GameSrv.Ping = [math]::Round(($Srv[0].Ping + $Srv[1].Ping + $Srv[2].Ping) / (3 - $GameSrv.PL))
                         }
-                        $Srv[0] = $CurrSrv.PsObject.Copy()
-                        if (($Srv[0].IP -eq $Srv[1].IP -and $Srv[1].IP -eq $Srv[2].IP) -and ($Srv[0].IP -ne $GameSrv.IP)){
-                            $GameSrv = $Srv[0].PsObject.Copy()
-                            Write-Host "Gameserver found:   " $GameSrv.IP -ForegroundColor Yellow
-                            $GameSrv.PL += $Srv[1].PL
-                            $GameSrv.PL += $Srv[2].PL
-                            if ($GameSrv.PL -lt 3){
-                                $GameSrv.Ping = [math]::Round(($Srv[0].Ping + $Srv[1].Ping + $Srv[2].Ping) / (3 - $GameSrv.PL))
-                            }
-                            if (($GameSrv.Ping -gt $PingCutoff) -or ($GameSrv.PL -gt 1)){
-                                Write-Host "Average Ping:        $($GameSrv.Ping)ms" -ForegroundColor Red
-                                Write-Host "Packets Lost:        $($GameSrv.PL)/3" -ForegroundColor Red
-                                $CheckRoute = [bool](Get-NetRoute -DestinationPrefix ($GameSrv.IP + "/32") -ea SilentlyContinue)
-                                foreach ($NetAdapter in $NetAdapters){
-                                    if ($CheckRoute){
-                                        Set-NetRoute -InterfaceIndex $NetAdapter -DestinationPrefix ($GameSrv.IP + "/32") -NextHop 0.0.0.0 -PolicyStore ActiveStore -ValidLifetime $TimeSpan -PreferredLifetime $TimeSpan | Out-Null
-                                        Write-Host "Resetting timeout of $($GameSrv.IP) on Interface #$($NetAdapter) back to $($TimeSpan.TotalSeconds) seconds" -ForegroundColor Red
-                                    }else{
-                                        New-NetRoute -InterfaceIndex $NetAdapter -DestinationPrefix ($GameSrv.IP + "/32") -NextHop 0.0.0.0 -PolicyStore ActiveStore -ValidLifetime $TimeSpan -PreferredLifetime $TimeSpan | Out-Null
-                                        Write-Host "Adding Nullroute for $($GameSrv.IP) on Interface #$($NetAdapter) for $($TimeSpan.TotalSeconds) seconds" -ForegroundColor Red
-                                    }
+                        if (($GameSrv.Ping -gt $PingCutoff) -or ($GameSrv.PL -gt 1)){
+                            Write-Host "Average Ping:        $($GameSrv.Ping)ms" -ForegroundColor Red
+                            Write-Host "Packets Lost:        $($GameSrv.PL)/3" -ForegroundColor Red
+                            $CheckRoute = [bool](Get-NetRoute -DestinationPrefix ($GameSrv.IP + "/32") -ea SilentlyContinue)
+                            foreach ($NetAdapter in $NetAdapters){
+                                if ($CheckRoute){
+                                    Set-NetRoute -InterfaceIndex $NetAdapter -DestinationPrefix ($GameSrv.IP + "/32") -NextHop 0.0.0.0 -PolicyStore ActiveStore -ValidLifetime $TimeSpan -PreferredLifetime $TimeSpan | Out-Null
+                                    Write-Host "Resetting timeout of $($GameSrv.IP) on Interface #$($NetAdapter) back to $($TimeSpan.TotalSeconds) seconds" -ForegroundColor Red
+                                }else{
+                                    New-NetRoute -InterfaceIndex $NetAdapter -DestinationPrefix ($GameSrv.IP + "/32") -NextHop 0.0.0.0 -PolicyStore ActiveStore -ValidLifetime $TimeSpan -PreferredLifetime $TimeSpan | Out-Null
+                                    Write-Host "Adding Nullroute for $($GameSrv.IP) on Interface #$($NetAdapter) for $($TimeSpan.TotalSeconds) seconds" -ForegroundColor Red
                                 }
-                            }else{
-                                Write-Host "Average Ping:        $($GameSrv.Ping)ms" -ForegroundColor Green
-                                Write-Host "Packets Lost:        $($GameSrv.PL)/3" -ForegroundColor Green
-                                Write-Host "Have Fun!" -ForegroundColor Green
                             }
+                        }else{
+                            Write-Host "Average Ping:        $($GameSrv.Ping)ms" -ForegroundColor Green
+                            Write-Host "Packets Lost:        $($GameSrv.PL)/3" -ForegroundColor Green
+                            Write-Host "Have Fun!" -ForegroundColor Green
                         }
                     }
+                }
             }
+        }elseif ($GameSrv.IP -ne $null){
+            $CurrSrv = New-Object PsObject -Property @{IP=$null; Ping=0; PL=0}
+            $Srv[2] = $Srv[1].PsObject.Copy()
+            $Srv[1] = $Srv[0].PsObject.Copy()
+            $Srv[0] = $CurrSrv.PsObject.Copy()
+            if ($Srv[0].IP -eq $null -and $Srv[1].IP -eq $null -and $Srv[2].IP -eq $null){
+                $GameSrv.IP = $null
+            }
+        }
         sleep -m 500
-    }else {
+    }else{
         if ($RLfound){
             Write-Host "None or too many Rocket League processes found!" -ForegroundColor Yellow
             $RLfound = $false
