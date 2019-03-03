@@ -63,9 +63,15 @@ while (1) {
                             if (($GameSrv.Ping -gt $PingCutoff) -or ($GameSrv.PL -gt 1)){
                                 Write-Host "Average Ping:        $($GameSrv.Ping)ms" -ForegroundColor Red
                                 Write-Host "Packets Lost:        $($GameSrv.PL)/3" -ForegroundColor Red
+                                $CheckRoute = [bool](Get-NetRoute -DestinationPrefix ($GameSrv.IP + "/32") -ea SilentlyContinue)
                                 foreach ($NetAdapter in $NetAdapters){
-                                    New-NetRoute -InterfaceIndex $NetAdapter -DestinationPrefix ($GameSrv.IP + "/32") -NextHop 0.0.0.0 -PolicyStore ActiveStore -ValidLifetime $TimeSpan -PreferredLifetime $TimeSpan | Out-Null
-                                     Write-Host "Adding Nullroute for $($GameSrv.IP) on Interface #$($NetAdapter) for $($TimeSpan.TotalSeconds) Seconds" -ForegroundColor Red
+                                    if ($CheckRoute){
+                                        Set-NetRoute -InterfaceIndex $NetAdapter -DestinationPrefix ($GameSrv.IP + "/32") -NextHop 0.0.0.0 -PolicyStore ActiveStore -ValidLifetime $TimeSpan -PreferredLifetime $TimeSpan | Out-Null
+                                        Write-Host "Resetting timeout of $($GameSrv.IP) on Interface #$($NetAdapter) back to $($TimeSpan.TotalSeconds) seconds" -ForegroundColor Red
+                                    }else{
+                                        New-NetRoute -InterfaceIndex $NetAdapter -DestinationPrefix ($GameSrv.IP + "/32") -NextHop 0.0.0.0 -PolicyStore ActiveStore -ValidLifetime $TimeSpan -PreferredLifetime $TimeSpan | Out-Null
+                                        Write-Host "Adding Nullroute for $($GameSrv.IP) on Interface #$($NetAdapter) for $($TimeSpan.TotalSeconds) seconds" -ForegroundColor Red
+                                    }
                                 }
                             }else{
                                 Write-Host "Average Ping:        $($GameSrv.Ping)ms" -ForegroundColor Green
